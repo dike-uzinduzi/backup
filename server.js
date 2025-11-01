@@ -1,74 +1,203 @@
-var http = require('http');
-const { Pesepay } = require('pesepay')
-const {loadEnvFile} = require('node:process');
+const express = require('express');
+const { Pesepay } = require('pesepay');
+const { loadEnvFile } = require('node:process');
+const axios = require('axios');
+const http = require('http');   
+const https = require('https'); 
 
-loadEnvFile();
 
-const details=`{
-  "CURRENCY_CODE": "USD",
-  "PAYMENT_REASON": "Album Purchase",
-  "amount": 100,
-}`;
 
-const post_options = {
-  hostname: 'api.pesepay.com',
-  port: 443,
-  path: '/v1/transactions',
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${process.env.INTEGRATION_KEY}`
-  }
-};
+// using env file
+try {
+    loadEnvFile();
+} catch (err) {
+    console.warn('Could not load .env file', err.message);
+}
+
+
+const app = express();
+app.use(express.json()); 
+const port = process.env.PORT || 3000;
+
+const PESEPAY_API_URL = 'https://api.pesepay.com/api/payments-engine/v1';
+
+
+if (!process.env.INTEGRATION_KEY || !process.env.ENCRYPTION_KEY) {
+    console.error("Error: INTEGRATION_KEY or ENCRYPTION_KEY not found in .env file.");
+    console.log("Please create a .env file with your Pesepay credentials.");
+    process.exit(1); 
+}
 
 const pesepay = new Pesepay(process.env.INTEGRATION_KEY, process.env.ENCRYPTION_KEY);
-
 pesepay.resultUrl = process.env.RESULT_URL;
 pesepay.returnUrl = process.env.RETURN_URL;
 
-const transaction = pesepay.createTransaction(amount, 'CURRENCY_CODE', 'PAYMENT_REASON')
+console.log("Pesepay SDK initialized.");
 
-pesepay
-    .initiateTransaction(transaction)
-    .then((response) => {
-      // User the redirect url to complete the transaction on Pesepay payment page
-      const redirectUrl = response.redirectUrl;
-      // Save the reference number (used to check the status of a transaction and to make the payment)
-      const referenceNumber = response.referenceNumber;
-    })
-    .catch((error) => {
-     console.error('Error initiating transaction:', error);
-  });
+// Redirect Payments Those with the pesepay page
+app.post('/create-redirect-payment', async (req, res) => {
+    try {
+        const { amount, currencyCode, paymentReason } = req.body;
+        if (!amount || !currencyCode || !paymentReason) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Missing required fields: amount, currencyCode, paymentReason' 
+            });
+        }
 
-const payment = pesepay.createPayment('CURRENCY_CODE', 'PAYMENT_METHOD_CODE', 'CUSTOMER_EMAIL(OPTIONAL)', 'CUSTOMER_PHONE_NUMBER(OPTIONAL)', 'CUSTOMER_NAME(OPTIONAL)')
+        console.log(`Creating redirect transaction for ${amount} ${currencyCode}`);
+        const transaction = pesepay.createTransaction(amount, currencyCode, paymentReason);
+        
+        const response = await pesepay.initiateTransaction(transaction);
 
-const requiredFields = {'requiredFieldName': 'requiredFieldValue'}
-
-pesepay
-     .makeSeamlessPayment(payment, 'PAYMENT_REASON', AMOUNT, requiredFields)
-     .then((response) => {
-       // Save the poll url and reference number (used to check the status of a transaction)
-       const pollUrl = response.pollUrl;
-       const referenceNumber = response.referenceNumber;
-     })
-     .catch((error) => {
-       console.error('Error making seamless payment:', error);
-     });
-
-const post_request = http.request(post_options, (response) => {
-    console.log(`Response Code: ${response.statusCode}`);
-    console.log(`Response Body: `);
-    response.pipe(process.stdout);
+        if (response.success) {
+            res.status(200).json(response);
+        } else {
+            res.status(400).json(response);
+        }
+    } catch (error) {
+        console.error('Error initiating transaction:', error);
+        res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+    }
 });
 
-post_request.on('error', (e) => {
-    console.error(`Problem with request: ${e.message}`);
+// SeamLess Payments Those without the pesepay page
+app.post('/create-seamless-payment', async (req, res) => {
+    try {
+        const { 
+            amount, 
+            currencyCode, 
+            paymentReason, 
+            paymentMethodCode, 
+            customerEmail, 
+            customerPhone, 
+            customerName,
+            requiredFields = {}
+        } = req.body;
+
+        if (!amount || !currencyCode || !paymentReason || !paymentMethodCode || (!customerEmail && !customerPhone)) {
+             return res.status(400).json({ 
+                success: false, 
+                message: 'Missing fields: amount, currencyCode, paymentReason, paymentMethodCode, and (customerEmail or customerPhone)' 
+            });
+        }
+        
+        console.log(`Creating seamless payment for ${amount} ${currencyCode} via ${paymentMethodCode}`);
+        const payment = pesepay.createPayment(currencyCode, paymentMethodCode, customerEmail, customerPhone, customerName);
+        const response = await pesepay.makeSeamlessPayment(payment, paymentReason, amount, requiredFields);
+
+        if (response.success) {
+            res.status(200).json(response);
+        } else {
+            res.status(400).json(response);
+        }
+    } catch (error) {
+        console.error('Error making seamless payment:', error);
+        res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+    }
 });
-post_request.end(details);
-// http.createServer(function (req, res) {
+// Check Payment by Reference Number
+app.get('/check-payment/:referenceNumber', async (req, res) => {
+    try {
+        const { referenceNumber } = req.params;
+        console.log(`Checking status for reference: ${referenceNumber}`);
 
-//     res.writeHead(200, {'Content-Type': 'text/html'});
-    
-//     res.end('Hello World!');
+        const response = await pesepay.checkPayment(referenceNumber);
+        
+        if (response.success) {
+            res.status(200).json(response); 
+        } else {
+            res.status(400).json(response);
+        }
+    } catch (error) {
+        console.error('Error checking payment:', error);
+        res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+    }
+});
 
-// }).listen(8080);
+// Check Payment by Poll URL
+app.post('/poll-payment', async (req, res) => {
+    try {
+        const { pollUrl } = req.body;
+
+        if (!pollUrl) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Missing required field: pollUrl' 
+            });
+        }
+        
+        console.log(`Polling URL: ${pollUrl}`);
+        const response = await pesepay.pollTransaction(pollUrl);
+
+        if (response.success) {
+            res.status(200).json(response);
+        } else {
+            res.status(400).json(response);
+        }
+    } catch (error) {
+        console.error('Error polling transaction:', error);
+        res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+    }
+});
+
+// Get Active Currencies 
+app.get('/currencies', async (req, res) => {
+    console.log('Fetching active currencies...');
+    try {
+        const response = await axios.get(`${PESEPAY_API_URL}/currencies/active`, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        // Send the data from Pesepay back to Postman
+        res.status(200).json(response.data);
+    } catch (error) {
+        console.error('Error fetching currencies:', error.message);
+        res.status(500).json({ success: false, message: 'Failed to fetch currencies', error: error.message });
+    }
+});
+
+// Get Payment Methods by Currency
+app.get('/payment-methods', async (req, res) => {
+    try {
+        const { currencyCode } = req.query;
+
+        if (!currencyCode) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Query parameter "currencyCode" is required' 
+            });
+        }
+        
+        console.log(`Fetching payment methods for: ${currencyCode}`);
+        
+        const response = await axios.get(`${PESEPAY_API_URL}/payment-methods/for-currency`, {
+            params: {
+                currencyCode: currencyCode // axios will format this as ?currencyCode=USD
+            },
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        // Send the data from Pesepay back to Postman
+        res.status(200).json(response.data);
+    } catch (error) {
+        console.error('Error fetching payment methods:', error.message);
+        res.status(500).json({ success: false, message: 'Failed to fetch payment methods', error: error.message });
+    }
+});
+
+
+// Start the server
+app.listen(port, () => {
+    console.log(`Pesepay Backup server running on http://localhost:${port}`);
+    console.log('These are the available endpoints:');
+    console.log(`  POST http://localhost:${port}/create-redirect-payment`);
+    console.log(`  POST http://localhost:${port}/create-seamless-payment`);
+    console.log(`  GET  http://localhost:${port}/check-payment/:referenceNumber`);
+    console.log(`  POST http://localhost:${port}/poll-payment`);
+    console.log(`  GET  http://localhost:${port}/currencies`);
+    console.log(`  GET  http://localhost:${port}/payment-methods`);
+});
