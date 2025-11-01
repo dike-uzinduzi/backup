@@ -5,7 +5,8 @@ const axios = require('axios');
 const http = require('http');   
 const https = require('https'); 
 
-
+const httpAgent = new http.Agent({ keepAlive: false });
+const httpsAgent = new https.Agent({ keepAlive: false });
 
 // using env file
 try {
