@@ -4,6 +4,23 @@ const {loadEnvFile} = require('node:process');
 
 loadEnvFile();
 
+const details=`{
+  "CURRENCY_CODE": "USD",
+  "PAYMENT_REASON": "Album Purchase",
+  "amount": 100,
+}`;
+
+const post_options = {
+  hostname: 'api.pesepay.com',
+  port: 443,
+  path: '/v1/transactions',
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${process.env.INTEGRATION_KEY}`
+  }
+};
+
 const pesepay = new Pesepay(process.env.INTEGRATION_KEY, process.env.ENCRYPTION_KEY);
 
 pesepay.resultUrl = process.env.RESULT_URL;
@@ -37,10 +54,21 @@ pesepay
      .catch((error) => {
        console.error('Error making seamless payment:', error);
      });
-http.createServer(function (req, res) {
 
-    res.writeHead(200, {'Content-Type': 'text/html'});
+const post_request = http.request(post_options, (response) => {
+    console.log(`Response Code: ${response.statusCode}`);
+    console.log(`Response Body: `);
+    response.pipe(process.stdout);
+});
+
+post_request.on('error', (e) => {
+    console.error(`Problem with request: ${e.message}`);
+});
+post_request.end(details);
+// http.createServer(function (req, res) {
+
+//     res.writeHead(200, {'Content-Type': 'text/html'});
     
-    res.end('Hello World!');
+//     res.end('Hello World!');
 
-}).listen(8080);
+// }).listen(8080);
