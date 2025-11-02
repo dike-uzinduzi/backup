@@ -2,9 +2,8 @@
 
 A simple Node.js Express server that acts as a wrapper for the Pesepay payment gateway API. This server simplifies creating payments, checking transaction status, and retrieving gateway information like active currencies and payment methods.
 
----
 
-## 🚀 Getting Started
+## Getting Started
 
 You can use it as reference to your codebase
 
