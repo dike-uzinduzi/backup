@@ -1,18 +1,15 @@
 # Uzinduzi Node Js Pesepay Gateway Implementation
 
-A simple Node.js Express server that acts as a wrapper for the Pesepay payment gateway API. This server simplifies creating payments, checking transaction status, and retrieving gateway information like active currencies and payment methods.
+A  Node.js Express server that acts wraps  the Pesepay payment gateway API.
 
 
-## Getting Started
 
-You can use it as reference to your codebase
-
-### 1. Prerequisites
+### 1. Install
 
 * pesepay
 
 
-##  API Helper Endpoints
+##  API  Endpoints
 
 These endpoints help you get the necessary codes and information before creating a transaction.
 
