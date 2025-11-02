@@ -2,8 +2,8 @@ const express = require('express');
 const { Pesepay } = require('pesepay');
 const { loadEnvFile } = require('node:process');
 const axios = require('axios');
-const http = require('http');   
-const https = require('https'); 
+const http = require('http');
+const https = require('https');
 
 const httpAgent = new http.Agent({ keepAlive: false });
 const httpsAgent = new https.Agent({ keepAlive: false });
@@ -17,7 +17,7 @@ try {
 
 
 const app = express();
-app.use(express.json()); 
+app.use(express.json());
 const port = process.env.PORT || 3000;
 
 const PESEPAY_API_URL = 'https://api.pesepay.com/api/payments-engine/v1';
@@ -26,7 +26,7 @@ const PESEPAY_API_URL = 'https://api.pesepay.com/api/payments-engine/v1';
 if (!process.env.INTEGRATION_KEY || !process.env.ENCRYPTION_KEY) {
     console.error("Error: INTEGRATION_KEY or ENCRYPTION_KEY not found in .env file.");
     console.log("Please create a .env file with your Pesepay credentials.");
-    process.exit(1); 
+    process.exit(1);
 }
 
 const pesepay = new Pesepay(process.env.INTEGRATION_KEY, process.env.ENCRYPTION_KEY);
@@ -40,15 +40,15 @@ app.post('/create-redirect-payment', async (req, res) => {
     try {
         const { amount, currencyCode, paymentReason } = req.body;
         if (!amount || !currencyCode || !paymentReason) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Missing required fields: amount, currencyCode, paymentReason' 
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: amount, currencyCode, paymentReason'
             });
         }
 
         console.log(`Creating redirect transaction for ${amount} ${currencyCode}`);
         const transaction = pesepay.createTransaction(amount, currencyCode, paymentReason);
-        
+
         const response = await pesepay.initiateTransaction(transaction);
 
         if (response.success) {
@@ -65,24 +65,24 @@ app.post('/create-redirect-payment', async (req, res) => {
 // SeamLess Payments Those without the pesepay page
 app.post('/create-seamless-payment', async (req, res) => {
     try {
-        const { 
-            amount, 
-            currencyCode, 
-            paymentReason, 
-            paymentMethodCode, 
-            customerEmail, 
-            customerPhone, 
+        const {
+            amount,
+            currencyCode,
+            paymentReason,
+            paymentMethodCode,
+            customerEmail,
+            customerPhone,
             customerName,
             requiredFields = {}
         } = req.body;
 
         if (!amount || !currencyCode || !paymentReason || !paymentMethodCode || (!customerEmail && !customerPhone)) {
-             return res.status(400).json({ 
-                success: false, 
-                message: 'Missing fields: amount, currencyCode, paymentReason, paymentMethodCode, and (customerEmail or customerPhone)' 
+            return res.status(400).json({
+                success: false,
+                message: 'Missing fields: amount, currencyCode, paymentReason, paymentMethodCode, and (customerEmail or customerPhone)'
             });
         }
-        
+
         console.log(`Creating seamless payment for ${amount} ${currencyCode} via ${paymentMethodCode}`);
         const payment = pesepay.createPayment(currencyCode, paymentMethodCode, customerEmail, customerPhone, customerName);
         const response = await pesepay.makeSeamlessPayment(payment, paymentReason, amount, requiredFields);
@@ -104,9 +104,9 @@ app.get('/check-payment/:referenceNumber', async (req, res) => {
         console.log(`Checking status for reference: ${referenceNumber}`);
 
         const response = await pesepay.checkPayment(referenceNumber);
-        
+
         if (response.success) {
-            res.status(200).json(response); 
+            res.status(200).json(response);
         } else {
             res.status(400).json(response);
         }
@@ -122,12 +122,12 @@ app.post('/poll-payment', async (req, res) => {
         const { pollUrl } = req.body;
 
         if (!pollUrl) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Missing required field: pollUrl' 
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required field: pollUrl'
             });
         }
-        
+
         console.log(`Polling URL: ${pollUrl}`);
         const response = await pesepay.pollTransaction(pollUrl);
 
@@ -149,9 +149,11 @@ app.get('/currencies', async (req, res) => {
         const response = await axios.get(`${PESEPAY_API_URL}/currencies/active`, {
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            httpAgent: httpAgent,
+            httpsAgent: httpsAgent
         });
-        // Send the data from Pesepay back to Postman
+
         res.status(200).json(response.data);
     } catch (error) {
         console.error('Error fetching currencies:', error.message);
@@ -165,24 +167,26 @@ app.get('/payment-methods', async (req, res) => {
         const { currencyCode } = req.query;
 
         if (!currencyCode) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Query parameter "currencyCode" is required' 
+            return res.status(400).json({
+                success: false,
+                message: 'Query parameter "currencyCode" is required'
             });
         }
-        
+
         console.log(`Fetching payment methods for: ${currencyCode}`);
-        
+
         const response = await axios.get(`${PESEPAY_API_URL}/payment-methods/for-currency`, {
             params: {
-                currencyCode: currencyCode // axios will format this as ?currencyCode=USD
+                currencyCode: currencyCode
             },
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            httpAgent: httpAgent,
+            httpsAgent: httpsAgent
         });
-        
-        // Send the data from Pesepay back to Postman
+
+
         res.status(200).json(response.data);
     } catch (error) {
         console.error('Error fetching payment methods:', error.message);
@@ -191,7 +195,7 @@ app.get('/payment-methods', async (req, res) => {
 });
 
 
-// Start the server
+
 app.listen(port, () => {
     console.log(`Pesepay Backup server running on http://localhost:${port}`);
     console.log('These are the available endpoints:');
