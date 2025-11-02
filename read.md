@@ -13,11 +13,10 @@ You can use it as reference to your codebase
 * pesepay
 
 
-## 🌎 API Helper Endpoints
+##  API Helper Endpoints
 
 These endpoints help you get the necessary codes and information before creating a transaction.
 
----
 
 ### 1. Get Active Currencies
 
@@ -72,7 +71,7 @@ Retrieves a list of available payment methods for a specific currency. This is c
 
     ```json
     [
-      ...
+      
       {
         "createdBy": "webster",
         "lastModifiedBy": "webster",
@@ -86,14 +85,13 @@ Retrieves a list of available payment methods for a specific currency. This is c
         "processingPaymentMessage": "Please enter PIN on the phone that is making the payment.",
         "code": "PZW212",
         "reverseProxyName": "innbucks",
-        ...
+    
       }
     ]
     ```
 
----
 
-## 💸 Payment Creation Endpoints
+## Payment Creation Endpoints
 
 These endpoints are used to initiate a new transaction.
 
@@ -162,7 +160,7 @@ Initiates a payment directly (e.g., for mobile money) without redirection.
 
 ---
 
-## 📊 Payment Status Endpoints
+##  Payment Status Endpoints
 
 These endpoints are used to check the status of a previously created transaction.
 
