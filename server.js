@@ -1,4 +1,5 @@
 const express = require('express');
+const cors = require('cors');
 const { Pesepay } = require('pesepay');
 const { loadEnvFile } = require('node:process');
 const axios = require('axios');
@@ -17,6 +18,7 @@ try {
 
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 const port = process.env.PORT || 3000;
 

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Album Store</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: grid; place-items: center; min-height: 90vh; background: #f4f7fa; }
+        #app { background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 2rem; width: 400px; }
+        h1, h2 { text-align: center; color: #333; }
+        h1 { margin-top: 0; }
+        h2 { border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .album { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+        .album:last-child { border: none; }
+        .album-details { font-size: 1.1rem; }
+        .album-price { font-weight: bold; color: #007bff; }
+        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; margin-top: 10px; transition: background 0.2s; }
+        button:hover { background: #0056b3; }
+        button.seamless { background: #28a745; }
+        button.seamless:hover { background: #1e7e34; }
+        button.back-button { background: #6c757d; margin-top: 20px; }
+        button.back-button:hover { background: #5a6268; }
+        
+        #customer-section, #payment-method-section, #status-section { display: none; }
+        
+        #status-message { font-size: 1.1rem; font-weight: bold; text-align: center; padding: 1rem; border-radius: 5px; }
+        .loading { background: #ffc; border: 1px solid #e6db55; color: #666; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        
+        #customer-details-form { margin-top: 1.5rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #555; }
+        .form-group input { width: 100%; padding: 8px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <div id="album-list">
+            <h1>Our Albums</h1>
+            </div>
+
+        <div id="customer-section">
+            <h2 id="selected-album-title"></h2>
+            
+            <div id="customer-details-form">
+                <div class="form-group">
+                    <label for="customer-name">Full Name</label>
+                    <input type="text" id="customer-name" placeholder="e.g. Dike Auz" value="Dike Auz">
+                </div>
+                <div class="form-group">
+                    <label for="customer-email">Email</label>
+                    <input type="email" id="customer-email" placeholder="e.g. dike@example.com" value="dike@uzinduziafrica.com">
+                </div>
+                <div class="form-group">
+                    <label for="customer-phone">Phone Number</label>
+                    <input type="tel" id="customer-phone" placeholder="e.g. 0774556973" value="0774556973">
+                </div>
+            </div>
+            
+            <button id="continue-to-payment">Continue to Payment</button>
+            <button id="back-to-albums" class="back-button">Back to Albums</button>
+        </div>
+
+        <div id="payment-method-section">
+            <h2>Choose Payment Method</h2>
+            <div id="payment-methods-list">
+                </div>
+            <button id="back-to-details" class="back-button">Back to Details</button>
+        </div>
+
+        <div id="status-section">
+            <h2>Payment Status</h2>
+            <div id="status-message"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const API_BASE_URL = 'http://localhost:3000';
+        
+        //  albums
+        const MOCK_ALBUMS = [
+            { id: 1, title: "Hope dzandarota", artist: "Tatu", price: 0.5, currency: "USD" },
+            { id: 2, title: "Gafa 25 ", artist: "Winky d", price: 15, currency: "USD" },
+            { id: 3, title: "Mashangu rapata", artist: "Tokiy", price: 12, currency: "USD" }
+        ];
+
+        // --- DOM  ---
+        const albumListDiv = document.getElementById('album-list');
+        const customerDiv = document.getElementById('customer-section');
+        const paymentMethodDiv = document.getElementById('payment-method-section');
+        const statusDiv = document.getElementById('status-section');
+        
+        const statusMessage = document.getElementById('status-message');
+        const paymentMethodsList = document.getElementById('payment-methods-list');
+        const selectedAlbumTitle = document.getElementById('selected-album-title');
+
+        // --- STATE ---
+        let currentAlbum = null; 
+        let pollingIntervalId = null; 
+
+     
+        function renderAlbums() {
+            albumListDiv.innerHTML = '<h1>Our Albums</h1>'; 
+            for (const album of MOCK_ALBUMS) {
+                const albumEl = document.createElement('div');
+                albumEl.className = 'album';
+                albumEl.innerHTML = `
+                    <div class="album-details">
+                        <strong>${album.title}</strong>
+                        <div style="font-size: 0.9rem; color: #666;">${album.artist}</div>
+                    </div>
+                    <div class="album-price">$${album.price}</div>
+                `;
+                const buyButton = document.createElement('button');
+                buyButton.innerText = 'Buy';
+                buyButton.onclick = () => showCustomerDetails(album);
+                
+                const albumContainer = document.createElement('div');
+                albumContainer.appendChild(albumEl);
+                albumContainer.appendChild(buyButton);
+                albumListDiv.appendChild(albumContainer);
+            }
+        }
+
+   
+        function showCustomerDetails(album) {
+            console.log('Selected album:', album);
+            currentAlbum = album; 
+
+            albumListDiv.style.display = 'none';
+            paymentMethodDiv.style.display = 'none';
+            statusDiv.style.display = 'none';
+            customerDiv.style.display = 'block'; 
+            
+            selectedAlbumTitle.innerText = `Buy: ${currentAlbum.title}`;
+        }
+
+      
+        async function fetchPaymentMethods() {
+          
+            if (!getCustomerData()) return; 
+
+            console.log('Fetching payment methods for:', currentAlbum.currency);
+            customerDiv.style.display = 'none';
+            paymentMethodDiv.style.display = 'block'; 
+            paymentMethodsList.innerHTML = '<p>Loading payment methods...</p>';
+
+
+            try {
+                
+                const response = await fetch(`${API_BASE_URL}/payment-methods?currencyCode=${currentAlbum.currency}`);
+                const methods = await response.json();
+                console.log('Available payment methods:', methods);
+
+                paymentMethodsList.innerHTML = ''; 
+                
+                methods.forEach(method => {
+                    const button = document.createElement('button');
+                    button.innerText = `Pay with ${method.name}`;
+                    
+                    if (method.redirectRequired) {
+                        button.onclick = () => handleRedirectPayment();
+                    } else {
+                        button.className = 'seamless';
+                        button.onclick = () => handleSeamlessPayment(method);
+                    }
+                    paymentMethodsList.appendChild(button);
+                });
+
+            } catch (err) {
+                paymentMethodsList.innerHTML = '<p style="color: red;">Error loading payment methods.</p>';
+                console.error('Failed to fetch payment methods:', err);
+            }
+        }
+
+       
+        function getCustomerData() {
+            const customerName = document.getElementById('customer-name').value;
+            const customerEmail = document.getElementById('customer-email').value;
+            const customerPhone = document.getElementById('customer-phone').value;
+
+         
+            if (!customerName || !customerEmail || !customerPhone) {
+                alert('Please fill in all customer details.');
+                return null;
+            }
+            
+            return { customerName, customerEmail, customerPhone };
+        }
+
+
+        async function handleRedirectPayment() {
+            const customerData = getCustomerData(); 
+            if (!customerData) return; 
+
+            console.log('Starting REDIRECT payment...');
+            updateStatus('loading', 'Creating secure redirect...');
+
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/create-redirect-payment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: currentAlbum.price,
+                        currencyCode: currentAlbum.currency,
+                        paymentReason: `Purchase of ${currentAlbum.title}`,
+                        customerEmail: customerData.customerEmail,
+                        customerPhone: customerData.customerPhone,
+                        customerName: customerData.customerName
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success && data.redirectUrl) {
+                    window.location.href = data.redirectUrl;
+                } else {
+                    updateStatus('error', data.message || 'Failed to create payment.');
+                }
+            } catch (err) {
+                updateStatus('error', 'Could not connect to server.');
+            }
+        }
+
+        
+        async function handleSeamlessPayment(method) {
+            const customerData = getCustomerData(); 
+            if (!customerData) return;
+            
+            console.log('Starting SEAMLESS payment...');
+            updateStatus('loading', 'Please check your phone to enter your PIN...');
+
+           
+            const requiredFields = {};
+            const needsPhone = method.requiredFields.find(f => f.name === 'customerPhoneNumber');
+            if (needsPhone) {
+                requiredFields.customerPhoneNumber = customerData.customerPhone;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/create-seamless-payment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: currentAlbum.price,
+                        currencyCode: currentAlbum.currency,
+                        paymentReason: `Purchase of ${currentAlbum.title}`,
+                        paymentMethodCode: method.code,
+                        customerEmail: customerData.customerEmail,
+                        customerPhone: customerData.customerPhone,
+                        customerName: customerData.customerName,
+                        requiredFields: requiredFields 
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success && data.referenceNumber) {
+                    startPolling(data.referenceNumber);
+                } else {
+                    updateStatus('error', data.message || 'Failed to start payment.');
+                }
+            } catch (err) {
+                updateStatus('error', 'Could not connect to server.');
+            }
+        }
+
+        
+        function startPolling(referenceNumber) {
+            console.log('Starting to poll for status, ref:', referenceNumber);
+            if (pollingIntervalId) clearInterval(pollingIntervalId);
+
+            pollingIntervalId = setInterval(async () => {
+                console.log('Polling...');
+       
+                try {
+                    const response = await fetch(`${API_BASE_URL}/check-payment/${referenceNumber}`);
+                    const data = await response.json();
+
+                    if (data.success && data.paid === true) {
+                        clearInterval(pollingIntervalId); 
+                        updateStatus('success', 'Payment Successful! ✅');
+                        console.log('Payment complete!', data);
+                    } else if (!data.success) {
+                        clearInterval(pollingIntervalId);
+                        updateStatus('error', data.message || 'Payment status check failed.');
+                    }
+                  
+                } catch(err) {
+                    clearInterval(pollingIntervalId); 
+                    updateStatus('error', 'Error checking status.');
+                }
+            }, 3000); // Check every 3 seconds
+        }
+
+   
+        function updateStatus(type, message) {
+            albumListDiv.style.display = 'none';
+            customerDiv.style.display = 'none';
+            paymentMethodDiv.style.display = 'none';
+            statusDiv.style.display = 'block';
+
+            statusMessage.innerText = message;
+            statusMessage.className = type;
+        }
+
+    
+        function showAlbumList() {
+            albumListDiv.style.display = 'block';
+            customerDiv.style.display = 'none';
+            paymentMethodDiv.style.display = 'none';
+            statusDiv.style.display = 'none';
+            
+            currentAlbum = null; 
+            if (pollingIntervalId) {
+                clearInterval(pollingIntervalId);
+            }
+        }
+
+      
+        document.addEventListener('DOMContentLoaded', () => {
+      
+            renderAlbums();
+            
+           
+            document.getElementById('continue-to-payment').onclick = fetchPaymentMethods;
+            document.getElementById('back-to-albums').onclick = showAlbumList;
+            document.getElementById('back-to-details').onclick = () => {
+            
+                showCustomerDetails(currentAlbum);
+            };
+        });
+    </script>
+</body>
+</html>
