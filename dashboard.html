@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f7fa; color: #333; padding: 2rem; }
+        h1 { text-align: center; color: #1d3557; }
+        h2 { border-bottom: 1px solid #eee; padding-bottom: 10px; color: #444; }
+        
+        #check-header {
+            max-width: 1000px;
+            margin: 0 auto 1.5rem auto;
+            background: #fff;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        #check-controls {
+            display: flex;
+            gap: 10px;
+        }
+        #check-controls input {
+            flex-grow: 1;
+            padding: 10px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #check-controls button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+        }
+        #check-controls button:hover { background: #0056b3; }
+        #manual-check-result {
+            font-size: 1rem;
+            font-weight: bold;
+            text-align: left;
+            padding: 1rem;
+            border-radius: 5px;
+            margin-top: 1rem;
+            display: none; /* Hidden by default */
+            white-space: pre-wrap; /* Allows JSON to format nicely */
+            word-wrap: break-word;
+        }
+        .loading { background: #ffc; border: 1px solid #e6db55; color: #666; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        
+        #dashboard {
+            max-width: 1000px;
+            margin: 2rem auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: #fdfdfd; }
+        .status-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-PAID, .status-SETTLEMENT_COMPLETED { background: #d4edda; color: #155724; }
+        .status-PENDING, .status-IN_PROGRESS { background: #fff3cd; color: #856404; }
+        .status-FAILED, .status-DECLINED, .status-CANCELLED { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <h1>📈 Pesepay Transaction Dashboard</h1>
+
+    <div id="check-header">
+        <h2>Check Manual Transaction</h2>
+        <div id="check-controls">
+            <input type="text" id="ref-input" placeholder="Enter reference number...">
+            <button id="check-ref-button">Check Status</button>
+        </div>
+        <div id="manual-check-result"></div>
+    </div>
+    
+    <div id="dashboard">
+        <h2>Live Transaction Feed</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Reference Number</th>
+                    <th>Reason</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tx-table-body">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000';
+        const tableBody = document.getElementById('tx-table-body');
+        
+        const refInput = document.getElementById('ref-input');
+        const checkRefButton = document.getElementById('check-ref-button');
+        const manualCheckResult = document.getElementById('manual-check-result');
+
+        /**
+         * Fetches all transactions and updates the live table
+         */
+        async function fetchTransactions() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/all-transactions`);
+                if (!response.ok) {
+                    throw new Error('Could not connect to server');
+                }
+                const transactions = await response.json();
+                
+                tableBody.innerHTML = ''; 
+
+                if (transactions.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="4" style="text-align: center;">No transactions yet. (Restart server or create a new payment)</td></tr>';
+                    return;
+                }
+
+                transactions.forEach(tx => {
+                    const row = document.createElement('tr');
+                    const statusClass = `status-${tx.status || 'UNKNOWN'}`;
+                    
+                    row.innerHTML = `
+                        <td>${tx.referenceNumber || 'N/A'}</td>
+                        <td>${tx.reason || tx.reasonForPayment || 'N/A'}</td>
+                        <td>$${(tx.amount || 0).toFixed(2)}</td>
+                        <td><span class="status-pill ${statusClass}">${tx.status || 'UNKNOWN'}</span></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+            } catch (error) {
+                console.error('Error fetching transactions:', error);
+                tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">${error.message}</td></tr>`;
+            }
+        }
+        
+        /**
+         * Function to handle manual check button click
+         */
+        async function checkManualReference() {
+            const referenceNumber = refInput.value.trim();
+            if (!referenceNumber) {
+                manualCheckResult.style.display = 'block';
+                manualCheckResult.className = 'error';
+                manualCheckResult.innerText = 'Please enter a reference number.';
+                return;
+            }
+
+            manualCheckResult.style.display = 'block';
+            manualCheckResult.className = 'loading';
+            manualCheckResult.innerText = `Checking status for ${referenceNumber}...`;
+            
+            try {
+                // --- THIS IS THE NEW LOGIC ---
+                
+                // --- Step 1: Get LIVE status from Pesepay API ---
+                const statusResponse = await fetch(`${API_BASE_URL}/check-payment/${referenceNumber}`);
+                const statusData = await statusResponse.json();
+
+                // --- Step 2: Get LOCAL details from our server's DB ---
+                let localDetails = { reason: 'N/A', amount: 0 }; // Defaults
+                try {
+                    const dbResponse = await fetch(`${API_BASE_URL}/all-transactions`);
+                    const allTxs = await dbResponse.json();
+                    const foundTx = allTxs.find(tx => tx.referenceNumber === referenceNumber);
+                    if (foundTx) {
+                        localDetails.reason = foundTx.reason || foundTx.reasonForPayment || 'N/A';
+                        localDetails.amount = foundTx.amount;
+                    } else {
+                        localDetails.reason = "Details not in local DB (server may have restarted)";
+                    }
+                } catch (e) {
+                    console.warn("Couldn't fetch local DB details, but continuing.", e);
+                }
+                
+                // --- Step 3: Combine and Display ---
+                if (statusData.success) {
+                    manualCheckResult.className = statusData.paid ? 'success' : 'loading';
+                    
+                    // Combine data from both sources
+                    const fullDetails = {
+                        liveStatus: {
+                            paid: statusData.paid,
+                            success: statusData.success,
+                            pollUrl: statusData.pollUrl
+                        },
+                        localDetails: {
+                            reason: localDetails.reason,
+                            amount: localDetails.amount
+                        }
+                    };
+                    
+                    // Display the combined, human-readable data
+                    manualCheckResult.innerText = `Paid Status: ${statusData.paid}\n` +
+                                                  `Reason: ${localDetails.reason}\n` +
+                                                  `Amount: $${(localDetails.amount || 0).toFixed(2)}\n\n` +
+                                                  `Full Details:\n${JSON.stringify(fullDetails, null, 2)}`;
+                } else {
+                    manualCheckResult.className = 'error';
+                    manualCheckResult.innerText = `Error: ${statusData.message || 'Could not find transaction.'}`;
+                }
+            } catch (error) {
+                manualCheckResult.className = 'error';
+                manualCheckResult.innerText = `Network Error: ${error.message}`;
+            }
+        }
+
+        // --- START THE DASHBOARD ---
+        
+        // 1. Fetch live data immediately on page load
+        fetchTransactions();
+
+        // 2. Set an interval to refresh the live data every 3 seconds
+        setInterval(fetchTransactions, 3000); 
+
+        // 3. Add click listener for the manual check button
+        checkRefButton.addEventListener('click', checkManualReference);
+        
+    </script>
+
+</body>
+</html>
